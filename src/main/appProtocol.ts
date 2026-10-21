@@ -16,7 +16,7 @@ export const EMOTE_URL_RE = /^\/([0-9a-f]{32})\.(webp|anim|sound)$/;
 /** Must run before app 'ready'. */
 export function registerAppScheme(): void {
   protocol.registerSchemesAsPrivileged([
-    { scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
+    { scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
   ]);
 }
 
@@ -40,19 +40,30 @@ export function resolveEmoteFile(dirs: readonly string[], urlPath: string): stri
   return null;
 }
 
-const notFound = (): Response => new Response('Not found', { status: 404 });
+const notFound = (): Response => new Response('Not found', { status: 404, headers: { 'Access-Control-Allow-Origin': '*' } });
 
 /** Imported emotes can be removed and imported again under the same name, so nothing may cache them. */
 async function fetchUncached(file: string): Promise<Response> {
   const res = await net.fetch(pathToFileURL(file).toString());
   const headers = new Headers(res.headers);
   headers.set('Cache-Control', 'no-store');
+  headers.set('Access-Control-Allow-Origin', '*');
   return new Response(res.body, { status: res.status, headers });
 }
 
 /** Host `emotes` from `emoteDirs()`; host `app` from `rendererRoot` when set (production); anything else is not found. */
 export function serveAppScheme(opts: { rendererRoot: string | null; emoteDirs: () => readonly string[] }): void {
   protocol.handle(APP_SCHEME, (request) => {
+    if (request.method === 'OPTIONS') {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+          'Access-Control-Allow-Headers': '*',
+        },
+      });
+    }
     const url = new URL(request.url);
     if (url.host === 'emotes') {
       const file = resolveEmoteFile(opts.emoteDirs(), url.pathname);
